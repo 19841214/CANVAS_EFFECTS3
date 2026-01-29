@@ -66,456 +66,166 @@
             },
             visualizer: {
                 smoothing: { value: 0.8, min: 0.1, max: 0.99, label: 'Smoothing' },
-                boost: { value: 1.5, min: 0.5, max: 3.0, label: 'Gain Boost' }
+                boost: { value: 2.0, min: 1.0, max: 5.0, label: 'Visual Boost' }
             }
         };
 
         // --- EFFECT IMPLEMENTATIONS ---
 
-        // 1. RAYCASTER (Pseudo 3D)
+        // 1. RAYCASTER (Unchanged)
         class RaycasterEffect {
             constructor(w, h) { this.w = w; this.h = h; this.map = []; this.p = {x:3.5, y:3.5, dir:0, plane:{x:0, y:0.66}}; this.init(); }
             init() {
-                // Simple 16x16 map
-                const m = [
-                    1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-                    1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,
-                    1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,
-                    1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,
-                    1,0,0,1,1,0,1,0,0,1,0,0,0,0,0,1,
-                    1,0,0,1,0,0,0,0,0,1,0,0,0,0,0,1,
-                    1,0,0,1,0,0,0,0,0,1,1,1,1,0,0,1,
-                    1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
-                    1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,1,
-                    1,0,1,1,0,0,0,1,0,0,1,0,0,0,0,1,
-                    1,0,0,0,0,0,0,1,0,0,1,0,0,0,0,1,
-                    1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
-                    1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
-                    1,1,0,0,0,0,0,1,0,0,0,0,0,0,0,1,
-                    1,1,0,0,0,0,0,1,0,0,0,0,0,0,0,1,
-                    1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
-                ];
-                this.map = m;
-                this.p = {x:3.5, y:3.5, dir:0};
+                const m = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,1,0,0,1,1,0,1,0,0,1,0,0,0,0,0,1,1,0,0,1,0,0,0,0,0,1,0,0,0,0,0,1,1,0,0,1,0,0,0,0,0,1,1,1,1,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,1,1,0,1,1,0,0,0,1,0,0,1,0,0,0,0,1,1,0,0,0,0,0,0,1,0,0,1,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,1,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,1,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1];
+                this.map = m; this.p = {x:3.5, y:3.5, dir:0};
             }
             resize(w, h) { this.w=w; this.h=h; }
             update(mouse, params) {
-                // Auto walk if mouse far from center
-                const speed = (params.speed || 3) * 0.01;
-                const rotSpeed = 0.03;
-                
-                // Mouse interaction for rotation
-                const center = this.w / 2;
-                const dx = (mouse.x - center) / center; // -1 to 1
+                const speed = (params.speed || 3) * 0.01; const rotSpeed = 0.03;
+                const center = this.w / 2; const dx = (mouse.x - center) / center;
                 this.p.dir += dx * rotSpeed;
-
-                // Move forward always
                 const moveStep = speed;
                 const newX = this.p.x + Math.cos(this.p.dir) * moveStep;
                 const newY = this.p.y + Math.sin(this.p.dir) * moveStep;
-                
-                // Collision check
-                if(this.map[Math.floor(newY)*16 + Math.floor(newX)] === 0) {
-                    this.p.x = newX;
-                    this.p.y = newY;
-                } else {
-                    // Slide
-                    this.p.dir += Math.PI/2;
-                }
+                if(this.map[Math.floor(newY)*16 + Math.floor(newX)] === 0) { this.p.x = newX; this.p.y = newY; } else { this.p.dir += Math.PI/2; }
             }
             draw(ctx, params) {
-                // Ceiling & Floor
                 ctx.fillStyle = '#1e1b4b'; ctx.fillRect(0,0,this.w, this.h/2);
                 ctx.fillStyle = '#312e81'; ctx.fillRect(0,this.h/2,this.w, this.h/2);
-
-                const fov = (params.fov || 60) * (Math.PI/180);
-                const halfFov = fov/2;
-                const numRays = Math.floor(this.w / 2); // Resolution downscale for perf
-                const stripWidth = Math.ceil(this.w / numRays);
-
+                const fov = (params.fov || 60) * (Math.PI/180); const halfFov = fov/2;
+                const numRays = Math.floor(this.w / 2); const stripWidth = Math.ceil(this.w / numRays);
                 for(let i=0; i<numRays; i++) {
                     const rayAngle = (this.p.dir - halfFov) + (i/numRays)*fov;
-                    const eyeX = Math.cos(rayAngle);
-                    const eyeY = Math.sin(rayAngle);
-
-                    let distToWall = 0;
-                    let hitWall = false;
-                    let testX = Math.floor(this.p.x);
-                    let testY = Math.floor(this.p.y);
-                    
-                    // DDA Algorithm (Simplified step version)
-                    let stepX = Math.cos(rayAngle);
-                    let stepY = Math.sin(rayAngle);
-                    let distance = 0;
-                    
+                    const eyeX = Math.cos(rayAngle); const eyeY = Math.sin(rayAngle);
+                    let hitWall = false; let distance = 0;
                     while(!hitWall && distance < 20) {
                         distance += 0.1;
-                        testX = Math.floor(this.p.x + eyeX * distance);
-                        testY = Math.floor(this.p.y + eyeY * distance);
-                        
-                        if(testX < 0 || testX >= 16 || testY < 0 || testY >= 16) {
-                            hitWall = true; distance = 20;
-                        } else if(this.map[testY*16 + testX] === 1) {
-                            hitWall = true;
-                        }
+                        let testX = Math.floor(this.p.x + eyeX * distance);
+                        let testY = Math.floor(this.p.y + eyeY * distance);
+                        if(testX < 0 || testX >= 16 || testY < 0 || testY >= 16 || this.map[testY*16 + testX] === 1) hitWall = true;
                     }
-
-                    // Fix fisheye
                     const z = distance * Math.cos(rayAngle - this.p.dir);
-                    const ceiling = this.h/2 - this.h/z;
-                    const floor = this.h - ceiling;
-                    const wallHeight = floor - ceiling;
-
-                    // Color based on distance
+                    const ceiling = this.h/2 - this.h/z; const wallHeight = this.h - 2*ceiling;
                     const shade = Math.max(0, 255 - distance*15);
-                    ctx.fillStyle = `rgb(${shade}, ${shade*0.8}, ${shade*1.5})`; // Bluish walls
+                    ctx.fillStyle = `rgb(${shade}, ${shade*0.8}, ${shade*1.5})`;
                     ctx.fillRect(i*stripWidth, ceiling, stripWidth, wallHeight);
                 }
-                
-                // Text
-                ctx.fillStyle = "#fff"; ctx.textAlign="center";
-                ctx.fillText("MOUSE LEFT/RIGHT TO TURN", this.w/2, 50);
+                ctx.fillStyle = "#fff"; ctx.textAlign="center"; ctx.fillText("MOUSE LEFT/RIGHT TO TURN", this.w/2, 50);
             }
         }
 
-        // 2. STARFIELD
+        // 2. STARFIELD (Unchanged)
         class StarfieldEffect {
             constructor(w, h) { this.w = w; this.h = h; this.stars = []; this.init(); }
             init() { this.stars = []; }
             resize(w, h) { this.w=w; this.h=h; }
             update(mouse, params) {
-                const count = params.count || 400;
-                const speed = params.speed || 10;
-                
-                while(this.stars.length < count) {
-                    this.stars.push({
-                        x: (Math.random()-0.5) * this.w * 2,
-                        y: (Math.random()-0.5) * this.h * 2,
-                        z: Math.random() * this.w
-                    });
-                }
+                const count = params.count || 400; const speed = params.speed || 10;
+                while(this.stars.length < count) this.stars.push({x: (Math.random()-0.5)*this.w*2, y: (Math.random()-0.5)*this.h*2, z: Math.random()*this.w});
                 while(this.stars.length > count) this.stars.pop();
-
-                // Mouse shift center
-                const cx = (mouse.x - this.w/2) * 2;
-                const cy = (mouse.y - this.h/2) * 2;
-
+                const cx = (mouse.x - this.w/2) * 2; const cy = (mouse.y - this.h/2) * 2;
                 this.stars.forEach(s => {
-                    s.z -= speed;
-                    s.x -= cx * 0.01; 
-                    s.y -= cy * 0.01;
-                    if(s.z <= 1) {
-                        s.z = this.w;
-                        s.x = (Math.random()-0.5) * this.w * 2;
-                        s.y = (Math.random()-0.5) * this.h * 2;
-                    }
+                    s.z -= speed; s.x -= cx * 0.01; s.y -= cy * 0.01;
+                    if(s.z <= 1) { s.z = this.w; s.x = (Math.random()-0.5)*this.w*2; s.y = (Math.random()-0.5)*this.h*2; }
                 });
             }
             draw(ctx) {
-                ctx.fillStyle = '#000'; ctx.fillRect(0,0,this.w, this.h);
-                ctx.fillStyle = '#fff';
+                ctx.fillStyle = '#000'; ctx.fillRect(0,0,this.w, this.h); ctx.fillStyle = '#fff';
                 const cx = this.w/2; const cy = this.h/2;
-                
                 this.stars.forEach(s => {
-                    const sx = (s.x / s.z) * 100 + cx;
-                    const sy = (s.y / s.z) * 100 + cy;
-                    const size = (1 - s.z/this.w) * 4;
-                    
-                    if(sx > 0 && sx < this.w && sy > 0 && sy < this.h) {
-                        // Shade by depth
-                        const alpha = 1 - s.z/this.w;
-                        ctx.globalAlpha = alpha;
-                        ctx.beginPath(); ctx.arc(sx, sy, size, 0, Math.PI*2); ctx.fill();
-                    }
+                    const sx = (s.x / s.z) * 100 + cx; const sy = (s.y / s.z) * 100 + cy; const size = (1 - s.z/this.w) * 4;
+                    if(sx > 0 && sx < this.w && sy > 0 && sy < this.h) { ctx.globalAlpha = 1 - s.z/this.w; ctx.beginPath(); ctx.arc(sx, sy, size, 0, Math.PI*2); ctx.fill(); }
                 });
                 ctx.globalAlpha = 1;
             }
         }
 
-        // 3. TUNNEL
+        // 3. TUNNEL (Unchanged)
         class TunnelEffect {
             constructor(w, h) { this.w = w; this.h = h; this.t = 0; this.init(); }
             init() {}
             resize(w, h) { this.w=w; this.h=h; }
-            update(mouse, params) { 
-                this.t += (params.speed || 2) * 0.05; 
-            }
+            update(mouse, params) { this.t += (params.speed || 2) * 0.05; }
             draw(ctx, params) {
-                const cx = this.w/2; const cy = this.h/2;
-                const twist = params.twist || 0;
-                
-                // Low res loop for performance
-                const step = 8;
+                const cx = this.w/2; const cy = this.h/2; const twist = params.twist || 0; const step = 8;
                 for(let r=50; r<Math.max(this.w, this.h); r+=step) {
-                    // Rects coming at you
-                    const size = (r + (this.t*100)%step);
-                    const depth = size / Math.max(this.w, this.h); // 0 to 1
-                    
-                    ctx.save();
-                    ctx.translate(cx, cy);
-                    ctx.rotate(depth * twist + this.t * 0.2);
-                    
-                    const alpha = depth;
-                    ctx.strokeStyle = `hsla(${depth*360 + this.t*50}, 80%, 60%, ${alpha})`;
-                    ctx.lineWidth = 2;
-                    ctx.strokeRect(-size/2, -size/2, size, size);
-                    ctx.restore();
+                    const size = (r + (this.t*100)%step); const depth = size / Math.max(this.w, this.h);
+                    ctx.save(); ctx.translate(cx, cy); ctx.rotate(depth * twist + this.t * 0.2);
+                    ctx.strokeStyle = `hsla(${depth*360 + this.t*50}, 80%, 60%, ${depth})`; ctx.lineWidth = 2; ctx.strokeRect(-size/2, -size/2, size, size); ctx.restore();
                 }
-                
-                // Clear center to simulate depth
-                ctx.fillStyle = 'rgba(15, 23, 42, 0.1)';
-                ctx.fillRect(0,0,this.w, this.h);
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.1)'; ctx.fillRect(0,0,this.w, this.h);
             }
         }
 
-        // 4. WATER RIPPLES
+        // 4. RIPPLES (Unchanged)
         class RippleEffect {
-            constructor(w, h) { 
-                this.w = w; this.h = h; 
-                this.cols = Math.floor(w/2); this.rows = Math.floor(h/2); // Half res for speed
-                this.buffer1 = []; this.buffer2 = [];
-                this.init();
-            }
-            init() {
-                this.cols = Math.floor(this.w/4); // Quarter res is safer for pure JS
-                this.rows = Math.floor(this.h/4);
-                this.buffer1 = new Float32Array(this.cols * this.rows);
-                this.buffer2 = new Float32Array(this.cols * this.rows);
-            }
+            constructor(w, h) { this.w = w; this.h = h; this.cols = Math.floor(w/2); this.rows = Math.floor(h/2); this.buffer1 = []; this.buffer2 = []; this.init(); }
+            init() { this.cols = Math.floor(this.w/4); this.rows = Math.floor(this.h/4); this.buffer1 = new Float32Array(this.cols * this.rows); this.buffer2 = new Float32Array(this.cols * this.rows); }
             resize(w, h) { this.w=w; this.h=h; this.init(); }
             update(mouse, params) {
-                const damping = params.damping || 0.96;
-                const rain = params.frequency || 1;
-
-                // Random rain
-                if(Math.random()*10 < rain) {
-                    const rx = Math.floor(Math.random() * (this.cols-2)) + 1;
-                    const ry = Math.floor(Math.random() * (this.rows-2)) + 1;
-                    this.buffer1[rx + ry * this.cols] = 255;
-                }
-
-                // Mouse interaction
+                const damping = params.damping || 0.96; const rain = params.frequency || 1;
+                if(Math.random()*10 < rain) { const rx = Math.floor(Math.random()*(this.cols-2))+1; const ry = Math.floor(Math.random()*(this.rows-2))+1; this.buffer1[rx + ry * this.cols] = 255; }
                 if(mouse.isDown || (mouse.px !== mouse.x && Math.random()>0.5)) {
-                    const mx = Math.floor((mouse.x / this.w) * this.cols);
-                    const my = Math.floor((mouse.y / this.h) * this.rows);
-                    if(mx > 1 && mx < this.cols-1 && my > 1 && my < this.rows-1) {
-                        this.buffer1[mx + my * this.cols] = 255;
-                    }
+                    const mx = Math.floor((mouse.x/this.w)*this.cols); const my = Math.floor((mouse.y/this.h)*this.rows);
+                    if(mx>1 && mx<this.cols-1 && my>1 && my<this.rows-1) this.buffer1[mx + my * this.cols] = 255;
                 }
-
-                // Propagation
                 for (let x = 1; x < this.cols - 1; x++) {
                     for (let y = 1; y < this.rows - 1; y++) {
                         const i = x + y * this.cols;
-                        this.buffer2[i] = (
-                            this.buffer1[i - 1] +
-                            this.buffer1[i + 1] +
-                            this.buffer1[i - this.cols] +
-                            this.buffer1[i + this.cols]
-                        ) / 2 - this.buffer2[i];
+                        this.buffer2[i] = (this.buffer1[i-1] + this.buffer1[i+1] + this.buffer1[i-this.cols] + this.buffer1[i+this.cols]) / 2 - this.buffer2[i];
                         this.buffer2[i] *= damping;
                     }
                 }
-
-                // Swap
-                let temp = this.buffer1;
-                this.buffer1 = this.buffer2;
-                this.buffer2 = temp;
+                let temp = this.buffer1; this.buffer1 = this.buffer2; this.buffer2 = temp;
             }
             draw(ctx) {
                 const imgData = ctx.createImageData(this.cols, this.rows);
                 for(let i=0; i<this.cols*this.rows; i++) {
-                    let val = this.buffer1[i];
-                    val = val > 255 ? 255 : val < 0 ? 0 : val;
-                    const idx = i * 4;
-                    // Blue water shading
-                    imgData.data[idx] = val;     
-                    imgData.data[idx+1] = val + 50; 
-                    imgData.data[idx+2] = val + 100;
-                    imgData.data[idx+3] = 255;
+                    let val = this.buffer1[i]; val = val > 255 ? 255 : val < 0 ? 0 : val;
+                    const idx = i * 4; imgData.data[idx] = val; imgData.data[idx+1] = val + 50; imgData.data[idx+2] = val + 100; imgData.data[idx+3] = 255;
                 }
-                
-                // Scale up
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = this.cols; tempCanvas.height = this.rows;
-                tempCanvas.getContext('2d').putImageData(imgData, 0, 0);
-                
-                ctx.imageSmoothingEnabled = true; // Smooth ripples
-                ctx.drawImage(tempCanvas, 0, 0, this.w, this.h);
+                const tempCanvas = document.createElement('canvas'); tempCanvas.width = this.cols; tempCanvas.height = this.rows;
+                tempCanvas.getContext('2d').putImageData(imgData, 0, 0); ctx.imageSmoothingEnabled = true; ctx.drawImage(tempCanvas, 0, 0, this.w, this.h);
             }
         }
 
-        // 5. FLUID SMOKE (Simplified Grid Solver)
+        // 5. FLUID (Unchanged)
         class FluidEffect {
-            constructor(w, h) {
-                this.w = w; this.h = h;
-                this.N = 40; // Grid size
-                this.iter = 4;
-                this.size = (this.N + 2) * (this.N + 2);
-                this.dt = 0.1;
-                this.diff = 0;
-                this.visc = 0;
-                this.s = new Float32Array(this.size);
-                this.density = new Float32Array(this.size);
-                this.Vx = new Float32Array(this.size);
-                this.Vy = new Float32Array(this.size);
-                this.Vx0 = new Float32Array(this.size);
-                this.Vy0 = new Float32Array(this.size);
-            }
-            init() {}
-            resize(w, h) { this.w=w; this.h=h; } // Reset handled by array alloc
-            
+            constructor(w, h) { this.w = w; this.h = h; this.N = 40; this.iter = 4; this.size = (this.N+2)*(this.N+2); this.dt = 0.1; this.diff = 0; this.visc = 0; this.s = new Float32Array(this.size); this.density = new Float32Array(this.size); this.Vx = new Float32Array(this.size); this.Vy = new Float32Array(this.size); this.Vx0 = new Float32Array(this.size); this.Vy0 = new Float32Array(this.size); }
+            init() {} resize(w, h) { this.w=w; this.h=h; }
             IX(x, y) { return x + (this.N + 2) * y; }
-            
             addDensity(x, y, amount) { this.density[this.IX(x, y)] += amount; }
-            addVelocity(x, y, amountX, amountY) {
-                const index = this.IX(x, y);
-                this.Vx[index] += amountX;
-                this.Vy[index] += amountY;
-            }
-            
-            lin_solve(b, x, x0, a, c) {
-                const cRecip = 1.0 / c;
-                for (let k = 0; k < this.iter; k++) {
-                    for (let j = 1; j <= this.N; j++) {
-                        for (let i = 1; i <= this.N; i++) {
-                            x[this.IX(i, j)] = (x0[this.IX(i, j)] + a * (x[this.IX(i + 1, j)] + x[this.IX(i - 1, j)] + x[this.IX(i, j + 1)] + x[this.IX(i, j - 1)])) * cRecip;
-                        }
-                    }
-                    this.set_bnd(b, x);
-                }
-            }
-            
-            project(velocX, velocY, p, div) {
-                for (let j = 1; j <= this.N; j++) {
-                    for (let i = 1; i <= this.N; i++) {
-                        div[this.IX(i, j)] = -0.5 * (velocX[this.IX(i + 1, j)] - velocX[this.IX(i - 1, j)] + velocY[this.IX(i, j + 1)] - velocY[this.IX(i, j - 1)]) / this.N;
-                        p[this.IX(i, j)] = 0;
-                    }
-                }
-                this.set_bnd(0, div); this.set_bnd(0, p);
-                this.lin_solve(0, p, div, 1, 4);
-                
-                for (let j = 1; j <= this.N; j++) {
-                    for (let i = 1; i <= this.N; i++) {
-                        velocX[this.IX(i, j)] -= 0.5 * (p[this.IX(i + 1, j)] - p[this.IX(i - 1, j)]) * this.N;
-                        velocY[this.IX(i, j)] -= 0.5 * (p[this.IX(i, j + 1)] - p[this.IX(i, j - 1)]) * this.N;
-                    }
-                }
-                this.set_bnd(1, velocX); this.set_bnd(2, velocY);
-            }
-            
-            advect(b, d, d0, velocX, velocY) {
-                let i0, i1, j0, j1;
-                let dtx = this.dt * (this.N - 2);
-                let dty = this.dt * (this.N - 2);
-                let s0, s1, t0, t1;
-                let tmp1, tmp2, x, y;
-                
-                for (let j = 1; j <= this.N; j++) {
-                    for (let i = 1; i <= this.N; i++) {
-                        tmp1 = dtx * velocX[this.IX(i, j)];
-                        tmp2 = dty * velocY[this.IX(i, j)];
-                        x = i - tmp1; y = j - tmp2;
-                        
-                        if (x < 0.5) x = 0.5; if (x > this.N + 0.5) x = this.N + 0.5;
-                        i0 = Math.floor(x); i1 = i0 + 1.0;
-                        if (y < 0.5) y = 0.5; if (y > this.N + 0.5) y = this.N + 0.5;
-                        j0 = Math.floor(y); j1 = j0 + 1.0;
-                        
-                        s1 = x - i0; s0 = 1.0 - s1;
-                        t1 = y - j0; t0 = 1.0 - t1;
-                        
-                        d[this.IX(i, j)] = s0 * (t0 * d0[this.IX(i0, j0)] + t1 * d0[this.IX(i0, j1)]) +
-                                           s1 * (t0 * d0[this.IX(i1, j0)] + t1 * d0[this.IX(i1, j1)]);
-                    }
-                }
-                this.set_bnd(b, d);
-            }
-            
-            set_bnd(b, x) {
-                for (let i = 1; i <= this.N; i++) {
-                    x[this.IX(i, 0)] = b == 2 ? -x[this.IX(i, 1)] : x[this.IX(i, 1)];
-                    x[this.IX(i, this.N + 1)] = b == 2 ? -x[this.IX(i, this.N)] : x[this.IX(i, this.N)];
-                }
-                for (let j = 1; j <= this.N; j++) {
-                    x[this.IX(0, j)] = b == 1 ? -x[this.IX(1, j)] : x[this.IX(1, j)];
-                    x[this.IX(this.N + 1, j)] = b == 1 ? -x[this.IX(this.N, j)] : x[this.IX(this.N, j)];
-                }
-                x[this.IX(0, 0)] = 0.5 * (x[this.IX(1, 0)] + x[this.IX(0, 1)]);
-                x[this.IX(0, this.N + 1)] = 0.5 * (x[this.IX(1, this.N + 1)] + x[this.IX(0, this.N)]);
-                x[this.IX(this.N + 1, 0)] = 0.5 * (x[this.IX(this.N, 0)] + x[this.IX(this.N + 1, 1)]);
-                x[this.IX(this.N + 1, this.N + 1)] = 0.5 * (x[this.IX(this.N, this.N + 1)] + x[this.IX(this.N + 1, this.N)]);
-            }
-            
-            step() {
-                this.diffuse(1, this.Vx0, this.Vx, this.visc);
-                this.diffuse(2, this.Vy0, this.Vy, this.visc);
-                this.project(this.Vx0, this.Vy0, this.Vx, this.Vy);
-                this.advect(1, this.Vx, this.Vx0, this.Vx0, this.Vy0);
-                this.advect(2, this.Vy, this.Vy0, this.Vx0, this.Vy0);
-                this.project(this.Vx, this.Vy, this.Vx0, this.Vy0);
-                this.diffuse(0, this.s, this.density, this.diff);
-                this.advect(0, this.density, this.s, this.Vx, this.Vy);
-            }
-            
-            diffuse(b, x, x0, diff) {
-                const a = this.dt * diff * (this.N - 2) * (this.N - 2);
-                this.lin_solve(b, x, x0, a, 1 + 6 * a);
-            }
-
+            addVelocity(x, y, amountX, amountY) { const index = this.IX(x, y); this.Vx[index] += amountX; this.Vy[index] += amountY; }
+            lin_solve(b, x, x0, a, c) { const cRecip = 1.0/c; for(let k=0; k<this.iter; k++) { for(let j=1; j<=this.N; j++) { for(let i=1; i<=this.N; i++) { x[this.IX(i, j)] = (x0[this.IX(i, j)] + a * (x[this.IX(i+1, j)] + x[this.IX(i-1, j)] + x[this.IX(i, j+1)] + x[this.IX(i, j-1)])) * cRecip; } } this.set_bnd(b, x); } }
+            project(velocX, velocY, p, div) { for(let j=1; j<=this.N; j++) { for(let i=1; i<=this.N; i++) { div[this.IX(i, j)] = -0.5 * (velocX[this.IX(i+1, j)] - velocX[this.IX(i-1, j)] + velocY[this.IX(i, j+1)] - velocY[this.IX(i, j-1)]) / this.N; p[this.IX(i, j)] = 0; } } this.set_bnd(0, div); this.set_bnd(0, p); this.lin_solve(0, p, div, 1, 4); for(let j=1; j<=this.N; j++) { for(let i=1; i<=this.N; i++) { velocX[this.IX(i, j)] -= 0.5 * (p[this.IX(i+1, j)] - p[this.IX(i-1, j)]) * this.N; velocY[this.IX(i, j)] -= 0.5 * (p[this.IX(i, j+1)] - p[this.IX(i, j-1)]) * this.N; } } this.set_bnd(1, velocX); this.set_bnd(2, velocY); }
+            advect(b, d, d0, velocX, velocY) { let i0, i1, j0, j1; let dtx = this.dt * (this.N - 2); let dty = this.dt * (this.N - 2); let s0, s1, t0, t1; let tmp1, tmp2, x, y; for(let j=1; j<=this.N; j++) { for(let i=1; i<=this.N; i++) { tmp1 = dtx * velocX[this.IX(i, j)]; tmp2 = dty * velocY[this.IX(i, j)]; x = i - tmp1; y = j - tmp2; if(x<0.5) x=0.5; if(x>this.N+0.5) x=this.N+0.5; i0 = Math.floor(x); i1 = i0 + 1.0; if(y<0.5) y=0.5; if(y>this.N+0.5) y=this.N+0.5; j0 = Math.floor(y); j1 = j0 + 1.0; s1 = x - i0; s0 = 1.0 - s1; t1 = y - j0; t0 = 1.0 - t1; d[this.IX(i, j)] = s0 * (t0 * d0[this.IX(i0, j0)] + t1 * d0[this.IX(i0, j1)]) + s1 * (t0 * d0[this.IX(i1, j0)] + t1 * d0[this.IX(i1, j1)]); } } this.set_bnd(b, d); }
+            set_bnd(b, x) { for(let i=1; i<=this.N; i++) { x[this.IX(i, 0)] = b==2 ? -x[this.IX(i, 1)] : x[this.IX(i, 1)]; x[this.IX(i, this.N+1)] = b==2 ? -x[this.IX(i, this.N)] : x[this.IX(i, this.N)]; } for(let j=1; j<=this.N; j++) { x[this.IX(0, j)] = b==1 ? -x[this.IX(1, j)] : x[this.IX(1, j)]; x[this.IX(this.N+1, j)] = b==1 ? -x[this.IX(this.N, j)] : x[this.IX(this.N, j)]; } x[this.IX(0, 0)] = 0.5 * (x[this.IX(1, 0)] + x[this.IX(0, 1)]); x[this.IX(0, this.N+1)] = 0.5 * (x[this.IX(1, this.N+1)] + x[this.IX(0, this.N)]); x[this.IX(this.N+1, 0)] = 0.5 * (x[this.IX(this.N, 0)] + x[this.IX(this.N+1, 1)]); x[this.IX(this.N+1, this.N+1)] = 0.5 * (x[this.IX(this.N, this.N+1)] + x[this.IX(this.N+1, this.N)]); }
+            step() { this.diffuse(1, this.Vx0, this.Vx, this.visc); this.diffuse(2, this.Vy0, this.Vy, this.visc); this.project(this.Vx0, this.Vy0, this.Vx, this.Vy); this.advect(1, this.Vx, this.Vx0, this.Vx0, this.Vy0); this.advect(2, this.Vy, this.Vy0, this.Vx0, this.Vy0); this.project(this.Vx, this.Vy, this.Vx0, this.Vy0); this.diffuse(0, this.s, this.density, this.diff); this.advect(0, this.density, this.s, this.Vx, this.Vy); }
+            diffuse(b, x, x0, diff) { const a = this.dt * diff * (this.N - 2) * (this.N - 2); this.lin_solve(b, x, x0, a, 1 + 6 * a); }
             update(mouse, params) {
-                // Interact
-                if (mouse.isDown) {
-                    const i = Math.floor((mouse.x / this.w) * this.N) + 1;
-                    const j = Math.floor((mouse.y / this.h) * this.N) + 1;
-                    if(i>0 && i<=this.N && j>0 && j<=this.N) {
-                        this.addDensity(i, j, 100);
-                        this.addVelocity(i, j, (mouse.x - mouse.px)*2, (mouse.y - mouse.py)*2);
-                    }
-                }
-                
-                // Dissipation param
-                const decay = params.dissipation || 0.99;
-                for(let i=0; i<this.size; i++) this.density[i] *= decay;
-
+                if (mouse.isDown) { const i = Math.floor((mouse.x/this.w)*this.N)+1; const j = Math.floor((mouse.y/this.h)*this.N)+1; if(i>0 && i<=this.N && j>0 && j<=this.N) { this.addDensity(i, j, 100); this.addVelocity(i, j, (mouse.x-mouse.px)*2, (mouse.y-mouse.py)*2); } }
+                const decay = params.dissipation || 0.99; for(let i=0; i<this.size; i++) this.density[i] *= decay;
                 this.step();
             }
-
             draw(ctx) {
-                const cellW = this.w / this.N;
-                const cellH = this.h / this.N;
-                
-                // Low res grid draw
-                for (let i = 1; i <= this.N; i++) {
-                    for (let j = 1; j <= this.N; j++) {
-                        const d = this.density[this.IX(i, j)];
-                        if(d > 0.1) {
-                            // Color mapping
-                            const c = Math.min(255, d * 255);
-                            ctx.fillStyle = `rgba(${c}, ${c*0.5}, ${c*0.8}, ${Math.min(1, d * 0.05)})`;
-                            ctx.fillRect((i - 1) * cellW, (j - 1) * cellH, cellW+1, cellH+1);
-                        }
-                    }
-                }
-                ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.textAlign = "center"; 
-                ctx.fillText("DRAG MOUSE TO ADD SMOKE", this.w/2, 50);
+                const cellW = this.w / this.N; const cellH = this.h / this.N;
+                for (let i = 1; i <= this.N; i++) { for (let j = 1; j <= this.N; j++) { const d = this.density[this.IX(i, j)]; if(d > 0.1) { const c = Math.min(255, d * 255); ctx.fillStyle = `rgba(${c}, ${c*0.5}, ${c*0.8}, ${Math.min(1, d * 0.05)})`; ctx.fillRect((i - 1) * cellW, (j - 1) * cellH, cellW+1, cellH+1); } } }
+                ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.textAlign = "center"; ctx.fillText("DRAG MOUSE TO ADD SMOKE", this.w/2, 50);
             }
         }
 
-        // 6. AUDIO VISUALIZER
+        // 6. AUDIO VISUALIZER (ENHANCED)
         class VisualizerEffect {
             constructor(w, h, audioEl) { 
                 this.w = w; this.h = h; 
                 this.audio = audioEl;
                 this.ctx = null; this.analyser = null; this.dataArray = null;
                 this.connected = false;
-                this.simulated = false; // Fallback
+                this.simulated = false; 
                 this.init(); 
             }
             init() {
                 try {
-                    // Try connect
                     const AudioContext = window.AudioContext || window.webkitAudioContext;
                     if (!this.ctx && AudioContext) {
                         this.ctx = new AudioContext();
@@ -523,28 +233,32 @@
                         this.analyser.fftSize = 256;
                         this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
                         
-                        // NOTE: This might fail CORS if server doesn't allow
-                        const source = this.ctx.createMediaElementSource(this.audio);
-                        source.connect(this.analyser);
-                        this.analyser.connect(this.ctx.destination);
-                        this.connected = true;
+                        // Handle potential source errors gracefully
+                        try {
+                            const source = this.ctx.createMediaElementSource(this.audio);
+                            source.connect(this.analyser);
+                            this.analyser.connect(this.ctx.destination);
+                            this.connected = true;
+                        } catch(e) {
+                            console.log("Source connection error (likely CORS):", e);
+                            this.simulated = true;
+                        }
                     }
                 } catch(e) {
-                    console.log("Audio API blocked or CORS issue, switching to Simulation mode");
                     this.simulated = true;
                 }
             }
             resize(w, h) { this.w=w; this.h=h; }
             update(mouse, params) {
-                // If audio paused or simulated
                 if (this.audio.paused) return;
                 
                 if (this.connected && !this.simulated) {
                     try {
                         this.analyser.getByteFrequencyData(this.dataArray);
-                        // Check if silence (CORS issue often returns all 0)
-                        let sum = 0; for(let i=0; i<this.dataArray.length; i++) sum += this.dataArray[i];
-                        if (sum === 0 && !this.audio.paused) this.simulated = true; // Fallback
+                        // Auto-switch to simulation if silence detected (CORS block results in 0s)
+                        let sum = 0; 
+                        for(let i=0; i<this.dataArray.length; i++) sum += this.dataArray[i];
+                        if (sum === 0 && !this.audio.paused) this.simulated = true; 
                     } catch(e) { this.simulated = true; }
                 }
             }
@@ -554,52 +268,63 @@
                 const radius = Math.min(this.w, this.h) * 0.2;
                 const bars = 64;
                 const step = (Math.PI * 2) / bars;
-                const boost = params.boost || 1.5;
+                const boost = params.boost || 2.0; // Higher default
 
                 for(let i=0; i<bars; i++) {
                     let val = 0;
                     if(this.simulated || !this.connected) {
-                        // Fake data based on time
-                        val = (Math.sin(Date.now()*0.005 + i*0.2) + 1) * 50 * boost;
-                        if(this.audio.paused) val *= 0.1; // Quiet if paused
+                        // ENHANCED SIMULATION: Looks like real EQ with jagged peaks
+                        const t = Date.now() * 0.005;
+                        // Combine varied sine waves for "dancing" effect
+                        const n = Math.sin(t * (i%10) + i) * Math.cos(t * 0.5 + i*0.2);
+                        val = (Math.abs(n) * 50 + 10) * boost;
+                        
+                        // Beat pulse simulation
+                        if(Math.floor(t * 2) % 2 === 0) val *= 1.2;
+                        
+                        if(this.audio.paused) val = 5; 
                     } else {
-                        // Real data mapped to 64 bars
-                        // dataArray usually 128 length
-                        val = this.dataArray[i] * boost * 0.5;
+                        // Real data (typically 0-255)
+                        // Map 64 bars to first ~100 bins of frequency data for bass/mid focus
+                        const index = Math.floor(i * (this.dataArray.length / bars)); 
+                        val = this.dataArray[index] * 0.5 * boost;
                     }
 
-                    const h = val * 2;
+                    const h = Math.max(5, val * 2);
                     const angle = i * step;
                     
                     ctx.save();
                     ctx.translate(cx, cy);
                     ctx.rotate(angle);
                     
-                    const hue = i * 5 + Date.now()*0.05;
+                    // Rainbow hue cycle
+                    const hue = i * 5 + Date.now()*0.1;
                     ctx.fillStyle = `hsl(${hue}, 80%, 60%)`;
-                    ctx.beginPath();
-                    // Draw rounded bar
-                    ctx.roundRect(0, radius, 10, h, 5);
-                    ctx.fill();
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = `hsl(${hue}, 80%, 60%)`;
                     
-                    // Mirror
-                    // ctx.roundRect(0, radius, 10, -h/2, 5); 
+                    ctx.beginPath();
+                    // Draw outer bar
+                    ctx.roundRect(0, radius, 8, h, 4);
+                    ctx.fill();
                     
                     ctx.restore();
                 }
                 
-                // Center Pulse
+                // Dynamic Center Pulse
                 let bass = 0;
                 if(this.connected && !this.simulated) bass = this.dataArray[2] || 0;
-                else bass = (Math.sin(Date.now()*0.01)+1)*50;
+                else bass = (Math.sin(Date.now()*0.02)+1)*40;
                 
                 ctx.beginPath();
-                ctx.arc(cx, cy, radius * 0.8 + bass * 0.2, 0, Math.PI*2);
-                ctx.fillStyle = `rgba(99, 102, 241, 0.2)`;
+                ctx.arc(cx, cy, radius * 0.8 + bass * 0.3 * (boost/2), 0, Math.PI*2);
+                ctx.fillStyle = `rgba(99, 102, 241, 0.3)`;
                 ctx.fill();
                 
-                ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.textAlign = "center";
-                if(this.simulated) ctx.fillText("SIMULATED MODE (CORS PROTECTED)", this.w/2, this.h - 50);
+                ctx.fillStyle = "rgba(255,255,255,0.5)"; ctx.textAlign = "center"; ctx.font = "12px monospace";
+                const modeText = this.simulated ? "SIMULATED MODE (CORS)" : "REALTIME AUDIO";
+                if(this.audio.paused) ctx.fillText("AUDIO PAUSED", this.w/2, this.h/2 + 5);
+                else ctx.fillText(modeText, this.w/2, this.h/2 + 5);
             }
         }
 
@@ -607,7 +332,6 @@
         const ImmersiveLab = () => {
             const canvasRef = useRef(null);
             const containerRef = useRef(null);
-            const audioRef = useRef(null); // Separate ref for visualizer source
             
             // State
             const [activeEffect, setActiveEffect] = useState('raycaster');
@@ -644,7 +368,13 @@
             useEffect(() => {
                 const handleVis = () => {
                     if (document.hidden) bgmRef.current?.pause();
-                    else if (hasStarted && !isMuted) bgmRef.current?.play().catch(()=>{});
+                    else if (hasStarted && !isMuted) {
+                        bgmRef.current?.play().catch(()=>{});
+                        // Resume context just in case
+                        if (effectInstance.current && effectInstance.current.ctx && effectInstance.current.ctx.state === 'suspended') {
+                            effectInstance.current.ctx.resume();
+                        }
+                    }
                 };
                 document.addEventListener("visibilitychange", handleVis);
                 return () => document.removeEventListener("visibilitychange", handleVis);
@@ -653,9 +383,13 @@
             const handleStartApp = () => {
                 sfxRef.current?.play().catch(()=>{});
                 bgmRef.current?.play().catch(()=>{});
-                // Initialize Audio Context for Visualizer if needed
+                
+                // Initialize Visualizer logic if needed
                 if(activeEffect === 'visualizer' && effectInstance.current) {
                     effectInstance.current.init();
+                    if (effectInstance.current.ctx && effectInstance.current.ctx.state === 'suspended') {
+                        effectInstance.current.ctx.resume();
+                    }
                 }
                 setHasStarted(true);
             };
@@ -689,9 +423,12 @@
                 };
                 loadEffect();
 
-                // If switching TO visualizer after start, init context
-                if(activeEffect === 'visualizer' && hasStarted) {
+                // Handle Context Resume on switching
+                if(activeEffect === 'visualizer' && hasStarted && effectInstance.current) {
                     effectInstance.current.init();
+                    if(effectInstance.current.ctx && effectInstance.current.ctx.state === 'suspended') {
+                        effectInstance.current.ctx.resume();
+                    }
                 }
 
                 const handleResize = () => {
@@ -759,12 +496,11 @@
                 };
             }, [activeEffect, targetFps]);
 
-            // Pixelated look for raycaster
             const canvasStyle = (activeEffect === 'raycaster' || activeEffect === 'fluid') ? { imageRendering: 'pixelated' } : {};
             
             return (
                 <div className="w-full h-[100dvh] relative overflow-hidden bg-slate-900 font-sans text-white">
-                    {/* Add crossOrigin for Visualizer */}
+                    {/* Audio with crossOrigin */}
                     <audio ref={bgmRef} crossOrigin="anonymous" loop src="https://cdn.pixabay.com/download/audio/2022/03/21/audio_0c4867c016.mp3?filename=future-chill_awareness-99187.mp3" />
                     <audio ref={sfxRef} src="https://cdn.pixabay.com/download/audio/2025/06/14/audio_3045825a0d.mp3?filename=sample_confirm_success02_kofi_by_miraclei-360154.mp3" />
 
